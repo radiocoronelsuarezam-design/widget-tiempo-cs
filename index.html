@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Widget Clima en Coronel Suárez - Pronóstico Extendido</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    
+    <style>
+        body {
+            margin: 0;
+            padding: 40px;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+        }
+        .clima-widget {
+            background: linear-gradient(135deg, #1f4068 0%, #162447 100%);
+            color: #ffffff;
+            width: 310px;
+            border-radius: 16px;
+            padding: 20px;
+            box-shadow: 0 8px 20px rgba(22, 36, 71, 0.2);
+            text-align: center;
+        }
+        .clima-header {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+            padding-bottom: 10px;
+            margin-bottom: 14px;
+        }
+        .clima-ciudad { font-size: 1.2rem; font-weight: 700; margin: 0; }
+        .clima-fuente { font-size: 0.7rem; color: rgba(255, 255, 255, 0.6); margin: 4px 0 0 0; text-transform: uppercase; }
+        
+        .clima-principal { 
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin: 8px 0;
+        }
+        .clima-temp { font-size: 3.2rem; font-weight: 300; margin: 0; line-height: 1; }
+        .clima-icono { font-size: 3.2rem; line-height: 1; } 
+
+        .clima-desc-container { margin-bottom: 8px; }
+        .clima-desc { font-size: 0.95rem; font-weight: 500; background: rgba(255, 255, 255, 0.15); padding: 5px 12px; border-radius: 20px; display: inline-block; text-transform: capitalize; }
+        .clima-detalles { border-top: 1px solid rgba(255, 255, 255, 0.15); padding-top: 12px; margin-top: 12px; }
+        .detalle-fila { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem; }
+        
+        /* Nuevos estilos para el pronóstico extendido */
+        .clima-extendido {
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            margin-top: 14px;
+            padding-top: 14px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .dia-pronostico {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-size: 0.8rem;
+        }
+        .dia-nombre {
+            font-weight: 600;
+            text-transform: capitalize;
+            margin-bottom: 4px;
+            color: rgba(255, 255, 255, 0.8);
+        }
+        .dia-icono {
+            font-size: 1.4rem;
+            margin: 4px 0;
+            height: 28px;
+            display: flex;
+            align-items: center;
+        }
+        .dia-temps {
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .temp-max { color: #ffbc00; margin-right: 4px; }
+        .temp-min { color: #a5d6a7; }
+    </style>
+</head>
+<body>
+
+<div class="clima-widget">
+    <div class="clima-header">
+        <h2 class="clima-ciudad">Coronel Suárez</h2>
+        <p class="clima-fuente">Estado del tiempo</p>
+    </div>
+    
+    <div class="clima-principal">
+        <div class="clima-temp" id="smn-temp">--°</div>
+        <div class="clima-icono" id="smn-icono"><i class="bi bi-cloud-sun" style="color: #e0e0e0;"></i></div>
+    </div>
+    
+    <div class="clima-desc-container">
+        <div class="clima-desc" id="smn-desc">Cargando...</div>
+    </div>
+    
+    <div class="clima-detalles">
+        <div class="detalle-fila"><span>Humedad</span><span style="font-weight:600;" id="smn-humedad">--%</span></div>
+        <div class="detalle-fila"><span>Viento</span><span style="font-weight:600;" id="smn-viento">-- km/h</span></div>
+        <div class="detalle-fila"><span>Presión</span><span style="font-weight:600;" id="smn-presion">-- hPa</span></div>
+    </div>
+
+    <div class="clima-extendido" id="contenedor-extendido">
+        </div>
+</div>
+
+<script>
+    async function obtenerClima() {
+        try {
+            // URL modificada: ahora incluye el parámetro &daily para pedir temperaturas máximas, mínimas y códigos de clima de los próximos días
+            const url = 'https://api.open-meteo.com/v1/forecast?latitude=-37.4547&longitude=-61.9334&current=temperature_2m,relative_humidity_2m,weather_code,pressure_msl,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=America/Argentina/Buenos_Aires';
+            
+            const respuesta = await fetch(url);
+            if (!respuesta.ok) throw new Error("Error de conexión");
+            
+            const datos = await respuesta.json();
+            
+            if (datos) {
+                // 1. Renderizar Clima Actual
+                if (datos.current) {
+                    const clima = datos.current;
+                    document.getElementById('smn-temp').innerText = `${Math.round(clima.temperature_2m)}°C`;
+                    document.getElementById('smn-humedad').innerText = `${clima.relative_humidity_2m}%`;
+                    document.getElementById('smn-viento').innerText = `${Math.round(clima.wind_speed_10m)} km/h (${obtenerDireccionViento(clima.wind_direction_10m)})`;
+                    document.getElementById('smn-presion').innerText = `${Math.round(clima.pressure_msl)} hPa`;
+                    
+                    const infoClima = interpretarCodigoWMO(clima.weather_code);
+                    document.getElementById('smn-desc').innerText = infoClima.texto;
+                    document.getElementById('smn-icono').innerHTML = infoClima.icono;
+                }
+
+                // 2. Renderizar Pronóstico Extendido (3 Días)
+                if (datos.daily) {
+                    const daily = datos.daily;
+                    let htmlExtendido = '';
+                    
+                    // Recorremos los índices 0 (Hoy), 1 (Mañana) y 2 (Pasado Mañana)
+                    for (let i = 0; i < 3; i++) {
+                        const infoDia = interpretarCodigoWMO(daily.weather_code[i]);
+                        const nombreDia = obtenerNombreDia(daily.time[i], i);
+                        const max = Math.round(daily.temperature_2m_max[i]);
+                        const min = Math.round(daily.temperature_2m_min[i]);
+                        
+                        htmlExtendido += `
+                            <div class="dia-pronostico">
+                                <span class="dia-nombre">${nombreDia}</span>
+                                <div class="dia-icono">${infoDia.icono}</div>
+                                <div class="dia-temps">
+                                    <span class="temp-max">${max}°</span><span class="temp-min">${min}°</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    document.getElementById('contenedor-extendido').innerHTML = htmlExtendido;
+                }
+            }
+        } catch (error) {
+            console.error("Error al obtener el clima:", error);
+            document.getElementById('smn-desc').innerText = "Error de conexión";
+        }
+    }
+
+    // Traduce códigos de la WMO a texto e íconos
+    function interpretarCodigoWMO(codigo) {
+        switch (codigo) {
+            case 0: 
+                return { texto: "Despejado", icono: '<i class="bi bi-sun" style="color: #ffca28;"></i>' };
+            case 1: case 2: 
+                return { texto: "Algo nublado", icono: '<i class="bi bi-cloud-sun" style="color: #e0e0e0;"></i>' };
+            case 3: 
+                return { texto: "Cubierto", icono: '<i class="bi bi-cloud" style="color: #b0bec5;"></i>' };
+            case 45: case 48: 
+                return { texto: "Niebla", icono: '<i class="bi bi-cloud-haze" style="color: #cfd8dc;"></i>' };
+            case 51: case 53: case 55: 
+                return { texto: "Llovizna", icono: '<i class="bi bi-cloud-drizzle" style="color: #4fc3f7;"></i>' };
+            case 61: case 63: case 65: 
+                return { texto: "Lluvia", icono: '<i class="bi bi-cloud-rain-heavy" style="color: #4fc3f7;"></i>' };
+            case 71: case 73: case 75: 
+                return { texto: "Nevada", icono: '<i class="bi bi-snowflake" style="color: #e0e0e0;"></i>' };
+            case 80: case 81: case 82: 
+                return { texto: "Chubascos", icono: '<i class="bi bi-cloud-rain" style="color: #4fc3f7;"></i>' };
+            case 95: case 96: case 99: 
+                return { texto: "Tormenta", icono: '<i class="bi bi-cloud-lightning-rain" style="color: #b0bec5;"></i>' };
+            default: 
+                return { texto: "Nublado", icono: '<i class="bi bi-cloud" style="color: #e0e0e0;"></i>' };
+        }
+    }
+
+    // Convierte la dirección en grados a texto cardinal
+    function obtenerDireccionViento(grados) {
+        const direcciones = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
+        return direcciones[Math.round(((grados % 360) / 45)) % 8];
+    }
+
+    // Retorna "Hoy", "Mañ" o las primeras 3 letras del día de la semana correspondiente
+    function obtenerNombreDia(fechaStr, indice) {
+        if (indice === 0) return 'Hoy';
+        if (indice === 1) return 'Mañ';
+        
+        // Formatea la fecha para extraer el nombre del día en español de forma abreviada
+        const fecha = new Date(fechaStr + 'T00:00:00');
+        return fecha.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '');
+    }
+
+    // Ejecutar al cargar e intervalos de 15 minutos
+    obtenerClima();
+    setInterval(obtenerClima, 15 * 60 * 1000);
+</script>
+
+</body>
+</html>
