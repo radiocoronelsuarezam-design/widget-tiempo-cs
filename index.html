@@ -49,7 +49,6 @@
         .clima-detalles { border-top: 1px solid rgba(255, 255, 255, 0.15); padding-top: 12px; margin-top: 12px; }
         .detalle-fila { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem; }
         
-        /* Estilos para el pronóstico extendido */
         .clima-extendido {
             border-top: 1px solid rgba(255, 255, 255, 0.15);
             margin-top: 14px;
@@ -115,48 +114,54 @@
 <script>
     async function obtenerClima() {
         try {
-            // URL con las coordenadas de Coronel Suárez y parámetro &timezone=auto para máxima estabilidad
-            const url = 'https://api.open-meteo.com/v1/forecast?latitude=-37.4547&longitude=-61.9334&current=temperature_2m,relative_humidity_2m,is_day,weather_code,pressure_msl,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto';
-            
+            const url = 'https://wttr.in/Coronel+Suarez?format=j1&lang=es';
             const respuesta = await fetch(url);
-            if (!respuesta.ok) throw new Error("Error de conexión");
+            if (!respuesta.ok) throw new Error("Error en la respuesta de la API");
             
             const datos = await respuesta.json();
             
-            if (datos) {
-                // 1. Renderizar Clima Actual (Sensible a Día/Noche)
-                if (datos.current) {
-                    const clima = datos.current;
-                    const esDia = clima.is_day === 1;
-
-                    document.getElementById('smn-temp').innerText = `${Math.round(clima.temperature_2m)}°C`;
-                    document.getElementById('smn-humedad').innerText = `${clima.relative_humidity_2m}%`;
-                    document.getElementById('smn-viento').innerText = `${Math.round(clima.wind_speed_10m)} km/h (${obtenerDireccionViento(clima.wind_direction_10m)})`;
-                    document.getElementById('smn-presion').innerText = `${Math.round(clima.pressure_msl)} hPa`;
-                    
-                    const infoClima = interpretarCodigoWMO(clima.weather_code, esDia);
-                    document.getElementById('smn-desc').innerText = infoClima.texto;
-                    document.getElementById('smn-icono').innerHTML = infoClima.icono;
-                }
-
-                // 2. Renderizar Pronóstico Extendido (3 Días)
-                if (datos.daily) {
-                    const daily = datos.daily;
+            if (datos && datos.current_condition && datos.current_condition[0]) {
+                const climaActual = datos.current_condition[0];
+                
+                // 1. Renderizar Clima Actual
+                document.getElementById('smn-temp').innerText = `${climaActual.temp_C}°C`;
+                document.getElementById('smn-humedad').innerText = `${climaActual.humidity}%`;
+                document.getElementById('smn-presion').innerText = `${climaActual.pressure} hPa`;
+                document.getElementById('smn-viento').innerText = `${climaActual.windspeedKmph} km/h (${climaActual.winddir16Point || ''})`;
+                
+                // Extraer el texto descriptivo en español de la API
+                const descripcion = climaActual.lang_es ? climaActual.lang_es[0].value : climaActual.weatherDesc[0].value;
+                document.getElementById('smn-desc').innerText = descripcion;
+                
+                // Evaluar si es de noche basándonos en la hora del sistema (noche de 19:00 a 06:00)
+                const horaActual = new Date().getHours();
+                const esDia = horaActual > 6 && horaActual < 19; 
+                
+                // Usamos la función basada en texto para el ícono principal (respeta Día/Noche)
+                document.getElementById('smn-icono').innerHTML = procesarIconoPorTexto(descripcion, esDia);
+                
+                // 2. Renderizar Pronóstico Extendido (Próximos 3 días)
+                if (datos.weather && datos.weather.length >= 3) {
                     let htmlExtendido = '';
                     
                     for (let i = 0; i < 3; i++) {
-                        // Forzamos true (Día) para el extendido diario general
-                        const infoDia = interpretarCodigoWMO(daily.weather_code[i], true);
-                        const nombreDia = obtenerNombreDia(daily.time[i], i);
-                        const max = Math.round(daily.temperature_2m_max[i]);
-                        const min = Math.round(daily.temperature_2m_min[i]);
+                        const diaData = datos.weather[i];
+                        const nombreDia = obtenerNombreDia(diaData.date, i);
+                        
+                        // Obtenemos la descripción del clima del mediodía del pronóstico extendido
+                        const descDia = diaData.hourly[4] && diaData.hourly[4].lang_es 
+                            ? diaData.hourly[4].lang_es[0].value 
+                            : (diaData.hourly[4] ? diaData.hourly[4].weatherDesc[0].value : descripcion);
+                        
+                        // Para el extendido forzamos esDia = true para que use siempre soles
+                        const iconoInfo = procesarIconoPorTexto(descDia, true);
                         
                         htmlExtendido += `
                             <div class="dia-pronostico">
                                 <span class="dia-nombre">${nombreDia}</span>
-                                <div class="dia-icono">${infoDia.icono}</div>
+                                <div class="dia-icono">${iconoInfo}</div>
                                 <div class="dia-temps">
-                                    <span class="temp-max">${max}°</span><span class="temp-min">${min}°</span>
+                                    <span class="temp-max">${diaData.maxtempC}°</span><span class="temp-min">${diaData.mintempC}°</span>
                                 </div>
                             </div>
                         `;
@@ -165,54 +170,46 @@
                 }
             }
         } catch (error) {
-            console.error("Error al obtener el clima:", error);
+            console.error("Error al conectar con la API:", error);
             document.getElementById('smn-desc').innerText = "Error de conexión";
         }
     }
 
-    // Traduce códigos de la WMO a texto e íconos, discriminando Día y Noche
-    function interpretarCodigoWMO(codigo, esDia) {
-        switch (codigo) {
-            case 0: // Despejado
-                return { 
-                    texto: "Despejado", 
-                    icono: esDia 
-                        ? '<i class="bi bi-sun" style="color: #ffca28;"></i>' 
-                        : '<i class="bi bi-moon-stars" style="color: #e0e0e0;"></i>' 
-                };
-            case 1: case 2: // Algo nublado / Parcialmente Nublado
-                return { 
-                    texto: "Algo nublado", 
-                    icono: esDia 
-                        ? '<i class="bi bi-cloud-sun" style="color: #e0e0e0;"></i>' 
-                        : '<i class="bi bi-cloud-moon" style="color: #b0bec5;"></i>' 
-                };
-            case 3: // Cubierto
-                return { texto: "Cubierto", icono: '<i class="bi bi-cloud" style="color: #b0bec5;"></i>' };
-            case 45: case 48: // Niebla
-                return { texto: "Niebla", icono: '<i class="bi bi-cloud-haze" style="color: #cfd8dc;"></i>' };
-            case 51: case 53: case 55: // Llovizna
-                return { texto: "Llovizna", icono: '<i class="bi bi-cloud-drizzle" style="color: #4fc3f7;"></i>' };
-            case 61: case 63: case 65: // Lluvia
-                return { texto: "Lluvia", icono: '<i class="bi bi-cloud-rain-heavy" style="color: #4fc3f7;"></i>' };
-            case 71: case 73: case 75: // Nevada
-                return { texto: "Nevada", icono: '<i class="bi bi-snowflake" style="color: #e0e0e0;"></i>' };
-            case 80: case 81: case 82: // Chubascos de lluvia
-                return { texto: "Chubascos", icono: '<i class="bi bi-cloud-rain" style="color: #4fc3f7;"></i>' };
-            case 95: case 96: case 99: // Tormenta
-                return { texto: "Tormenta", icono: '<i class="bi bi-cloud-lightning-rain" style="color: #b0bec5;"></i>' };
-            default: 
-                return { texto: "Nublado", icono: '<i class="bi bi-cloud" style="color: #e0e0e0;"></i>' };
+    // Procesa el ícono buscando palabras clave en el texto descriptivo devuelto por la API
+    function procesarIconoPorTexto(descripcion, esDia) {
+        if (!descripcion) return '<i class="bi bi-cloud" style="color: #e0e0e0;"></i>';
+        const desc = descripcion.toLowerCase();
+        
+        if (desc.includes("despejado") || desc.includes("soleado") || desc.includes("sol")) {
+            return esDia 
+                ? '<i class="bi bi-sun" style="color: #ffca28;"></i>' 
+                : '<i class="bi bi-moon-stars" style="color: #e0e0e0;"></i>';
+        } 
+        
+        if (desc.includes("parcialmente nublado") || desc.includes("algo nublado") || desc.includes("intervalos")) {
+            return esDia 
+                ? '<i class="bi bi-cloud-sun" style="color: #e0e0e0;"></i>' 
+                : '<i class="bi bi-cloud-moon" style="color: #b0bec5;"></i>';
+        } 
+        
+        if (desc.includes("nublado") || desc.includes("cubierto") || desc.includes("neblina") || desc.includes("niebla")) {
+            return desc.includes("niebla") || desc.includes("neblina")
+                ? '<i class="bi bi-cloud-haze" style="color: #cfd8dc;"></i>'
+                : '<i class="bi bi-cloud" style="color: #b0bec5;"></i>';
+        } 
+        
+        if (desc.includes("lluvia") || desc.includes("llovizna") || desc.includes("chubasco") || desc.includes("precipitación")) {
+            return '<i class="bi bi-cloud-rain-heavy" style="color: #4fc3f7;"></i>';
+        } 
+        
+        if (desc.includes("tormenta") || desc.includes("relámpago") || desc.includes("rayos")) {
+            return '<i class="bi bi-cloud-lightning-rain" style="color: #b0bec5;"></i>';
         }
+        
+        // Si no coincide con ninguna de las anteriores, devuelve una nube estándar de respaldo
+        return '<i class="bi bi-cloud" style="color: #e0e0e0;"></i>';
     }
 
-    // Convierte la dirección en grados a texto cardinal
-    function obtenerDireccionViento(grados) {
-        const direcciones = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
-        return direcciones[Math.round(((grados % 360) / 45)) % 8];
-    }
-
-    // Retorna "Hoy", "Mañ" o las primeras 3 letras del día de la semana correspondiente
     function obtenerNombreDia(fechaStr, indice) {
         if (indice === 0) return 'Hoy';
         if (indice === 1) return 'Mañ';
@@ -220,9 +217,7 @@
         return fecha.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '');
     }
 
-    // Ejecutar al cargar la página
     obtenerClima();
-    // Actualizar cada 15 minutos
     setInterval(obtenerClima, 15 * 60 * 1000);
 </script>
 
