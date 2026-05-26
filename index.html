@@ -3,24 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Widget Clima en Coronel Suárez - Pronóstico Extendido</title>
+    <title>Prueba Widget Clima - Modo Día/Noche</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
     
     <style>
         body {
             margin: 0;
-            padding: 10px;
-            background-color: #ffffff;
+            padding: 40px;
+            background-color: #f0f2f5;
             display: flex;
             justify-content: center;
             align-items: center;
+            min-height: 100vh;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
         }
         .clima-widget {
             background: linear-gradient(135deg, #1f4068 0%, #162447 100%);
             color: #ffffff;
             width: 310px;
-            border-radius: 10px;
+            border-radius: 16px;
             padding: 20px;
             box-shadow: 0 8px 20px rgba(22, 36, 71, 0.2);
             text-align: center;
@@ -48,7 +49,6 @@
         .clima-detalles { border-top: 1px solid rgba(255, 255, 255, 0.15); padding-top: 12px; margin-top: 12px; }
         .detalle-fila { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem; }
         
-        /* Nuevos estilos para el pronóstico extendido */
         .clima-extendido {
             border-top: 1px solid rgba(255, 255, 255, 0.15);
             margin-top: 14px;
@@ -114,8 +114,8 @@
 <script>
     async function obtenerClima() {
         try {
-            // URL modificada: ahora incluye el parámetro &daily para pedir temperaturas máximas, mínimas y códigos de clima de los próximos días
-            const url = 'https://api.open-meteo.com/v1/forecast?latitude=-37.4547&longitude=-61.9334&current=temperature_2m,relative_humidity_2m,weather_code,pressure_msl,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=America/Argentina/Buenos_Aires';
+            // Agregamos 'is_day' al parámetro current para saber si es de día o de noche en tiempo real
+            const url = 'https://api.open-meteo.com/v1/forecast?latitude=-37.4547&longitude=-61.9334&current=temperature_2m,relative_humidity_2m,is_day,weather_code,pressure_msl,wind_speed_10m,wind_direction_10m&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=America/Argentina/Buenos_Aires';
             
             const respuesta = await fetch(url);
             if (!respuesta.ok) throw new Error("Error de conexión");
@@ -123,27 +123,30 @@
             const datos = await respuesta.json();
             
             if (datos) {
-                // 1. Renderizar Clima Actual
+                // 1. Renderizar Clima Actual (Sensible a Día/Noche)
                 if (datos.current) {
                     const clima = datos.current;
+                    const esDia = clima.is_day === 1; // true si es de día, false si es de noche
+
                     document.getElementById('smn-temp').innerText = `${Math.round(clima.temperature_2m)}°C`;
                     document.getElementById('smn-humedad').innerText = `${clima.relative_humidity_2m}%`;
                     document.getElementById('smn-viento').innerText = `${Math.round(clima.wind_speed_10m)} km/h (${obtenerDireccionViento(clima.wind_direction_10m)})`;
                     document.getElementById('smn-presion').innerText = `${Math.round(clima.pressure_msl)} hPa`;
                     
-                    const infoClima = interpretarCodigoWMO(clima.weather_code);
+                    // Pasamos la bandera esDia a la función de íconos
+                    const infoClima = interpretarCodigoWMO(clima.weather_code, esDia);
                     document.getElementById('smn-desc').innerText = infoClima.texto;
                     document.getElementById('smn-icono').innerHTML = infoClima.icono;
                 }
 
-                // 2. Renderizar Pronóstico Extendido (3 Días)
+                // 2. Renderizar Pronóstico Extendido (Siempre usa íconos de día por defecto)
                 if (datos.daily) {
                     const daily = datos.daily;
                     let htmlExtendido = '';
                     
-                    // Recorremos los índices 0 (Hoy), 1 (Mañana) y 2 (Pasado Mañana)
                     for (let i = 0; i < 3; i++) {
-                        const infoDia = interpretarCodigoWMO(daily.weather_code[i]);
+                        // Forzamos que sea true (Día) para el extendido diario general
+                        const infoDia = interpretarCodigoWMO(daily.weather_code[i], true);
                         const nombreDia = obtenerNombreDia(daily.time[i], i);
                         const max = Math.round(daily.temperature_2m_max[i]);
                         const min = Math.round(daily.temperature_2m_min[i]);
@@ -167,13 +170,23 @@
         }
     }
 
-    // Traduce códigos de la WMO a texto e íconos
-    function interpretarCodigoWMO(codigo) {
+    // Traduce códigos de la WMO a texto e íconos, ahora discriminando Día y Noche
+    function interpretarCodigoWMO(codigo, esDia) {
         switch (codigo) {
-            case 0: 
-                return { texto: "Despejado", icono: '<i class="bi bi-sun" style="color: #ffca28;"></i>' };
-            case 1: case 2: 
-                return { texto: "Algo nublado", icono: '<i class="bi bi-cloud-sun" style="color: #e0e0e0;"></i>' };
+            case 0: // Despejado
+                return { 
+                    texto: "Despejado", 
+                    icono: esDia 
+                        ? '<i class="bi bi-sun" style="color: #ffca28;"></i>' 
+                        : '<i class="bi bi-moon-stars" style="color: #e0e0e0;"></i>' 
+                };
+            case 1: case 2: // Algo nublado / Parcialmente Nublado
+                return { 
+                    texto: "Algo nublado", 
+                    icono: esDia 
+                        ? '<i class="bi bi-cloud-sun" style="color: #e0e0e0;"></i>' 
+                        : '<i class="bi bi-cloud-moon" style="color: #b0bec5;"></i>' 
+                };
             case 3: 
                 return { texto: "Cubierto", icono: '<i class="bi bi-cloud" style="color: #b0bec5;"></i>' };
             case 45: case 48: 
@@ -193,23 +206,18 @@
         }
     }
 
-    // Convierte la dirección en grados a texto cardinal
     function obtenerDireccionViento(grados) {
         const direcciones = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
         return direcciones[Math.round(((grados % 360) / 45)) % 8];
     }
 
-    // Retorna "Hoy", "Mañ" o las primeras 3 letras del día de la semana correspondiente
     function obtenerNombreDia(fechaStr, indice) {
         if (indice === 0) return 'Hoy';
         if (indice === 1) return 'Mañ';
-        
-        // Formatea la fecha para extraer el nombre del día en español de forma abreviada
         const fecha = new Date(fechaStr + 'T00:00:00');
         return fecha.toLocaleDateString('es-AR', { weekday: 'short' }).replace('.', '');
     }
 
-    // Ejecutar al cargar e intervalos de 15 minutos
     obtenerClima();
     setInterval(obtenerClima, 15 * 60 * 1000);
 </script>
